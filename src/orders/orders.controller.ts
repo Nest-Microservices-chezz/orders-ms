@@ -1,4 +1,4 @@
-import { Controller } from '@nestjs/common';
+import { Controller, NotImplementedException } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -31,5 +31,10 @@ export class OrdersController {
   @MessagePattern('removeOrder')
   remove(@Payload() id: number) {
     return this.ordersService.remove(id);
+  }
+
+  @MessagePattern('changeOrderStatus')
+  changeOrderStatus() {
+    throw new NotImplementedException();
   }
 }
