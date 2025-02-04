@@ -21,7 +21,7 @@ export class CreateOrderDto {
     message: `Status must be one of the following values: ${OrderStatusList}`,
   })
   @IsOptional()
-  status: OrderStatus = OrderStatus.PENDING;
+  orderStatus: OrderStatus = OrderStatus.PENDING;
 
   @IsBoolean()
   @IsOptional()
