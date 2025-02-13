@@ -15,6 +15,8 @@ export class OrdersController {
 
   @MessagePattern('createOrder')
   create(@Payload() createOrderDto: CreateOrderDto) {
+    console.log("AUII?")
+    console.log("llego al ms ??????", createOrderDto);
     return this.ordersService.create(createOrderDto);
   }
 
