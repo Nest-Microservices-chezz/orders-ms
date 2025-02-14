@@ -1,16 +1,31 @@
-import { HttpStatus, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  HttpStatus,
+  Inject,
+  Injectable,
+  Logger,
+  OnModuleInit,
+} from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import {
   ChangeOrderStatusDto,
   CreateOrderDto,
+  OrderItemDto,
   OrderPaginationDto,
   UpdateOrderDto,
 } from './dto';
-import { RpcException } from '@nestjs/microservices';
-import { cpuUsage } from 'process';
+import { ClientProxy, RpcException } from '@nestjs/microservices';
+import { PRODUCT_SERVICE } from 'src/config';
+import { firstValueFrom } from 'rxjs';
+import { stat } from 'fs';
 
 @Injectable()
 export class OrdersService extends PrismaClient implements OnModuleInit {
+  constructor(
+    @Inject(PRODUCT_SERVICE) private readonly productClient: ClientProxy,
+  ) {
+    super();
+  }
+
   private readonly logger = new Logger(OrdersService.name);
 
   async onModuleInit() {
@@ -18,11 +33,69 @@ export class OrdersService extends PrismaClient implements OnModuleInit {
     this.logger.log('Connected to the database');
   }
 
-  create(createOrderDto: CreateOrderDto) {
-    return {
-      service: 'Orders Microservice',
-      createOrderDto: createOrderDto,
-    };
+  async create(createOrderDto: CreateOrderDto) {
+    try {
+      const productIds: number[] = createOrderDto.items.map(
+        (item) => item.productId,
+      );
+
+      const products: any[] = await firstValueFrom(
+        this.productClient.send({ cmd: 'validate_products' }, productIds),
+      );
+
+      const totalAmount = createOrderDto.items.reduce((acc, orderItem) => {
+        const price = products.find(
+          (product) => product.id === orderItem.productId,
+        ).price;
+
+        return price * orderItem.quantity + acc;
+      }, 0);
+
+      const totalItems = createOrderDto.items.reduce((acc, orderItem) => {
+        return orderItem.quantity + acc;
+      }, 0);
+
+      // crear transaccion en base de datos
+      const order = await this.order.create({
+        data: {
+          totalAmount: totalAmount,
+          totalItems: totalItems,
+          OrderItem: {
+            createMany: {
+              data: createOrderDto.items.map((orderItem) => ({
+                price: products.find(
+                  (product) => product.id === orderItem.productId,
+                ).price,
+                productId: orderItem.productId,
+                quantity: orderItem.quantity,
+              })),
+            },
+          },
+        },
+        include: {
+          OrderItem: {
+            select: {
+              price: true,
+              quantity: true,
+              productId: true,
+            },
+          },
+        },
+      });
+
+      return {
+        ...order,
+        OrderItem: order.OrderItem.map((item) => ({
+          ...item,
+          name: products.find((product) => product.id === item.productId).name,
+        })),
+      };
+    } catch (error) {
+      throw new RpcException({
+        status: HttpStatus.BAD_REQUEST,
+        message: error.message,
+      });
+    }
   }
 
   async findAll(orderPaginationDto: OrderPaginationDto) {
