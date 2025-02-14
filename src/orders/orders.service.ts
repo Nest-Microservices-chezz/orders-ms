@@ -129,6 +129,15 @@ export class OrdersService extends PrismaClient implements OnModuleInit {
       where: {
         id: id,
       },
+      include: {
+        OrderItem: {
+          select: {
+            price: true,
+            quantity: true,
+            productId: true,
+          },
+        },
+      },
     });
 
     if (!order) {
@@ -138,7 +147,19 @@ export class OrdersService extends PrismaClient implements OnModuleInit {
       });
     }
 
-    return order;
+    const productsId = order.OrderItem.map((item) => item.productId);
+
+    const products = await firstValueFrom(
+      this.productClient.send({ cmd: 'validate_products' }, productsId),
+    );
+
+    return {
+      ...order,
+      orderItem: order.OrderItem.map((item) => ({
+        ...item,
+        name: products.find((product) => product.id === item.productId).name,
+      })),
+    };
   }
 
   update(id: number, updateOrderDto: UpdateOrderDto) {
